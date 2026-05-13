@@ -104,3 +104,4 @@ done
 echo "--------------------------------------------"
 echo "Klart! Alla användare har skapats och konfigurerats."
 exit 0
+
