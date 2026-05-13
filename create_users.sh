@@ -1,63 +1,106 @@
 #!/bin/bash
 
-# Script: create_users.sh
-# Beskrivning: Skapar användare, deras katalogstruktur och en välkomstfil.
-#              Måste köras som root.
-#              Anrop: sudo ./create_users.sh användare1 [användare2 ...]
+# =============================================================================
+# create_users.sh
+# Beskrivning: Automatiserat script för att skapa användare och sätta upp
+#              deras katalogstruktur på systemet.
+# Användning: sudo ./create_users.sh <användare1> <användare2> ...
+# Exempel:    sudo ./create_users.sh Anna Bjorn Charlie
+# =============================================================================
 
-# ---------- 1. Kontrollera att scriptet körs som root ----------
-if [[ $EUID -ne 0 ]]; then
-    echo "Detta script måste köras som root." >&2
+# Gör scriptet körbart om det inte redan är det
+chmod +x "$0"
+
+# -----------------------------------------------------------------------------
+# 1. BEHÖRIGHETSKONTROLL - Kontrollera att scriptet körs som root (UID 0)
+# -----------------------------------------------------------------------------
+if [ "$EUID" -ne 0 ]; then
+    echo "Fel: Detta script måste köras som root (superuser)."
+    echo "Försök igen med: sudo $0 $*"
     exit 1
 fi
 
-# Kontrollera att minst ett användarnamn har skickats in
-if [[ $# -eq 0 ]]; then
-    echo "Användning: $0 användare1 [användare2 ...]" >&2
+# -----------------------------------------------------------------------------
+# 2. KONTROLLERA ATT MINST ETT ANVÄNDARNAMN HAR ANGETTS
+# -----------------------------------------------------------------------------
+if [ "$#" -eq 0 ]; then
+    echo "Fel: Inga användarnamn angavs."
+    echo "Användning: $0 <användare1> <användare2> ..."
     exit 1
 fi
 
-# ---------- Hämta lista över redan existerande "vanliga" användare ----------
-# Vi filtrerar på UID >= 1000 och UID < 65534 (undantag för "nobody").
-existing_users=()
-while IFS=: read -r username _ uid _; do
-    if (( uid >= 1000 && uid < 65534 )); then
-        existing_users+=("$username")
-    fi
-done < /etc/passwd
-
-# ---------- Loopa igenom alla angivna användarnamn ----------
-for user in "$@"; do
-    # Skapa användaren med hemkatalog (-m). Använd full sökväg för att vara
-    # oberoende av sudo:s PATH.
-    /usr/sbin/useradd -m "$user" 2>/dev/null
-    if [[ $? -ne 0 ]]; then
-        echo "Kunde inte skapa användaren: $user" >&2
-        continue
-    fi
-
-    homedir="/home/$user"
-
-    # ---------- 3. Skapa undermapparna Documents, Downloads, Work ----------
-    # Använd install med absolut sökväg och rätt ägare/rättigheter (700).
-    /usr/bin/install -d -m 700 -o "$user" -g "$user" "$homedir/Documents"
-    /usr/bin/install -d -m 700 -o "$user" -g "$user" "$homedir/Downloads"
-    /usr/bin/install -d -m 700 -o "$user" -g "$user" "$homedir/Work"
-
-    # ---------- 4. Skapa welcome.txt ----------
-    welcomefile="$homedir/welcome.txt"
-    echo "Välkommen $user" > "$welcomefile"
-
-    # Skriv ut alla andra befintliga användare (exkludera den nya själv)
-    for existing in "${existing_users[@]}"; do
-        if [[ "$existing" != "$user" ]]; then
-            echo "$existing" >> "$welcomefile"
+# -----------------------------------------------------------------------------
+# 3. SKAPA ALLA ANVÄNDARE FÖRST innan vi skapar filer
+#    (så att alla användare finns i /etc/passwd när welcome.txt skrivs)
+# -----------------------------------------------------------------------------
+for ANVANDARE in "$@"; do
+    if id "$ANVANDARE" &>/dev/null; then
+        echo "Varning: Användaren '$ANVANDARE' finns redan."
+    else
+        # Skapa användaren med hemkatalog och bash som standardskal
+        useradd -m -s /bin/bash "$ANVANDARE"
+        if [ $? -ne 0 ]; then
+            echo "Fel: Kunde inte skapa användaren '$ANVANDARE'."
+            exit 1
         fi
-    done
-
-    # Ägare och rättigheter för välkomstfilen
-    /usr/bin/chown "$user":"$user" "$welcomefile"
-    /bin/chmod 600 "$welcomefile"
+        echo "Användaren '$ANVANDARE' skapades."
+    fi
 done
 
+# -----------------------------------------------------------------------------
+# 4. SÄTT UPP KATALOGER, RÄTTIGHETER OCH VÄLKOMSTFIL FÖR VARJE ANVÄNDARE
+# -----------------------------------------------------------------------------
+for ANVANDARE in "$@"; do
+
+    echo "--------------------------------------------"
+    echo "Konfigurerar: $ANVANDARE"
+
+    HEMKATALOG="/home/$ANVANDARE"
+
+    # Skapa hemkatalogen om den saknas
+    if [ ! -d "$HEMKATALOG" ]; then
+        mkdir -p "$HEMKATALOG"
+    fi
+
+    # Skapa de tre obligatoriska undermapparna
+    mkdir -p "$HEMKATALOG/Documents"
+    mkdir -p "$HEMKATALOG/Downloads"
+    mkdir -p "$HEMKATALOG/Work"
+
+    echo "Kataloger skapade: Documents, Downloads, Work"
+
+    # Sätt rättigheter - endast ägaren kan läsa/skriva/köra (700)
+    chmod 700 "$HEMKATALOG/Documents"
+    chmod 700 "$HEMKATALOG/Downloads"
+    chmod 700 "$HEMKATALOG/Work"
+
+    echo "Rättigheter satta (700)."
+
+    # -------------------------------------------------------------------------
+    # Skapa welcome.txt
+    # Rad 1: "Välkommen <användarnamn>"
+    # Resterande rader: alla andra användare med UID >= 1000
+    # -------------------------------------------------------------------------
+    VELKOMST_FIL="$HEMKATALOG/welcome.txt"
+
+    # Rad 1: personligt välkomstmeddelande
+    echo "Välkommen $ANVANDARE" > "$VELKOMST_FIL"
+
+    # Lista alla andra riktiga användare (UID >= 1000), exkludera nuvarande
+    while IFS=: read -r NAMN _ UID _ _ _ _; do
+        if [ "$UID" -ge 1000 ] && [ "$NAMN" != "$ANVANDARE" ] && [ "$NAMN" != "nobody" ]; then
+            echo "$NAMN" >> "$VELKOMST_FIL"
+        fi
+    done < /etc/passwd
+
+    echo "Välkomstfil skapad."
+
+    # Sätt rätt ägare på hela hemkatalogen
+    chown -R "$ANVANDARE":"$ANVANDARE" "$HEMKATALOG"
+
+    echo "Klar: $ANVANDARE"
+done
+
+echo "--------------------------------------------"
+echo "Klart! Alla användare har skapats och konfigurerats."
 exit 0
