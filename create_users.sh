@@ -38,25 +38,27 @@ for ANVANDARE in "$@"; do
     # Kontrollera om användaren redan finns i systemet
     if id "$ANVANDARE" &>/dev/null; then
         echo "Varning: Användaren '$ANVANDARE' finns redan. Hoppar över."
-        continue
+    else
+        # Skapa användaren med hemkatalog och bash som standardskal
+        useradd -m -s /bin/bash "$ANVANDARE"
+
+        if [ $? -ne 0 ]; then
+            echo "Fel: Kunde inte skapa användaren '$ANVANDARE'. Hoppar över."
+            continue
+        fi
+
+        echo "Användaren '$ANVANDARE' skapades."
     fi
-
-    # Skapa användaren med en hemkatalog (-m skapar hemkatalog automatiskt)
-    useradd -m "$ANVANDARE"
-
-    # Kontrollera att useradd lyckades
-    if [ $? -ne 0 ]; then
-        echo "Fel: Kunde inte skapa användaren '$ANVANDARE'. Hoppar över."
-        continue
-    fi
-
-    echo "Användaren '$ANVANDARE' skapades."
 
     # -------------------------------------------------------------------------
     # 4. KATALOGSTRUKTUR - Skapa undermapparna Documents, Downloads och Work
-    #    i användarens hemkatalog
     # -------------------------------------------------------------------------
     HEMKATALOG="/home/$ANVANDARE"
+
+    # Skapa hemkatalogen om den saknas
+    if [ ! -d "$HEMKATALOG" ]; then
+        mkdir -p "$HEMKATALOG"
+    fi
 
     # Skapa de tre obligatoriska undermapparna
     mkdir -p "$HEMKATALOG/Documents"
@@ -66,8 +68,7 @@ for ANVANDARE in "$@"; do
     echo "Kataloger skapade: Documents, Downloads, Work"
 
     # -------------------------------------------------------------------------
-    # 5. RÄTTIGHETER - Sätt rättigheter så att endast ägaren kan läsa/skriva
-    #    i mapparna (chmod 700 = rwx för ägaren, ingenting för andra)
+    # 5. RÄTTIGHETER - Endast ägaren kan läsa/skriva/köra (chmod 700)
     # -------------------------------------------------------------------------
     chmod 700 "$HEMKATALOG/Documents"
     chmod 700 "$HEMKATALOG/Downloads"
@@ -76,35 +77,30 @@ for ANVANDARE in "$@"; do
     echo "Rättigheter satta (700) på Documents, Downloads och Work."
 
     # -------------------------------------------------------------------------
-    # 6. VÄLKOMSTMEDDELANDE - Skapa filen welcome.txt i hemkatalogen
-    #    Rad 1: Personligt välkomstmeddelande
-    #    Resterande rader: Lista på alla andra användare i systemet
+    # 6. VÄLKOMSTMEDDELANDE - Skapa welcome.txt i hemkatalogen
+    #    Rad 1: "Välkommen <användarnamn>"
+    #    Följande rader: Alla andra användare på systemet (UID >= 1000)
     # -------------------------------------------------------------------------
     VELKOMST_FIL="$HEMKATALOG/welcome.txt"
 
-    # Rad 1: Välkomstmeddelande med användarens namn
+    # Rad 1: Personligt välkomstmeddelande
     echo "Välkommen $ANVANDARE" > "$VELKOMST_FIL"
 
-    # Lägg till en tom rad och en rubrik för användarlistan
-    echo "" >> "$VELKOMST_FIL"
-    echo "Andra användare på systemet:" >> "$VELKOMST_FIL"
-
-    # Hämta alla andra användare från /etc/passwd (UID >= 1000 = riktiga användare)
-    # och exkludera den nyskapade användaren samt "nobody"
+    # Lista alla andra riktiga användare (UID >= 1000), exkludera den nyskapade
     while IFS=: read -r NAMN _ UID _ _ _ _; do
         if [ "$UID" -ge 1000 ] && [ "$NAMN" != "$ANVANDARE" ] && [ "$NAMN" != "nobody" ]; then
-            echo "- $NAMN" >> "$VELKOMST_FIL"
+            echo "$NAMN" >> "$VELKOMST_FIL"
         fi
     done < /etc/passwd
 
     echo "Välkomstfil skapad: $VELKOMST_FIL"
 
     # -------------------------------------------------------------------------
-    # 7. ÄGARSKAP - Se till att hemkatalogen och alla filer ägs av användaren
+    # 7. ÄGARSKAP - Sätt rätt ägare på hela hemkatalogen
     # -------------------------------------------------------------------------
     chown -R "$ANVANDARE":"$ANVANDARE" "$HEMKATALOG"
 
-    echo "Ägarskap satt för '$ANVANDARE' på hela hemkatalogen."
+    echo "Ägarskap satt för '$ANVANDARE'."
     echo "Användaren '$ANVANDARE' är nu klar!"
 
 done
