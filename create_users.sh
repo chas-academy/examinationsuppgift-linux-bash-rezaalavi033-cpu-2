@@ -2,107 +2,75 @@
 
 # =============================================================================
 # create_users.sh
-# Beskrivning: Automatiserat script för att skapa användare och sätta upp
-#              deras katalogstruktur på systemet.
-# Användning: sudo ./create_users.sh <användare1> <användare2> ...
-# Exempel:    sudo ./create_users.sh Anna Bjorn Charlie
+# Beskrivning: Skapar användare, hemkatalogstruktur och välkomstmeddelande.
+#              Måste köras som root.
+# Användning:   sudo ./create_users.sh <användare1> <användare2> ...
 # =============================================================================
 
-# Gör scriptet körbart om det inte redan är det
-chmod +x "$0"
-
-# -----------------------------------------------------------------------------
-# 1. BEHÖRIGHETSKONTROLL - Kontrollera att scriptet körs som root (UID 0)
-# -----------------------------------------------------------------------------
-if [ "$EUID" -ne 0 ]; then
-    echo "Fel: Detta script måste köras som root (superuser)."
-    echo "Försök igen med: sudo $0 $*"
+# ---------- 1. Root-kontroll ----------
+if [[ $EUID -ne 0 ]]; then
+    echo "Detta script måste köras som root." >&2
     exit 1
 fi
 
-# -----------------------------------------------------------------------------
-# 2. KONTROLLERA ATT MINST ETT ANVÄNDARNAMN HAR ANGETTS
-# -----------------------------------------------------------------------------
-if [ "$#" -eq 0 ]; then
-    echo "Fel: Inga användarnamn angavs."
-    echo "Användning: $0 <användare1> <användare2> ..."
+if [[ $# -eq 0 ]]; then
+    echo "Användning: $0 <användare1> [användare2 ...]" >&2
     exit 1
 fi
 
-# -----------------------------------------------------------------------------
-# 3. SKAPA ALLA ANVÄNDARE FÖRST
-#    (så att alla användare finns i /etc/passwd när welcome.txt skrivs)
-# -----------------------------------------------------------------------------
-for ANVANDARE in "$@"; do
-    if id "$ANVANDARE" &>/dev/null; then
-        echo "Varning: Användaren '$ANVANDARE' finns redan."
+# ---------- 2. Hämta redan existerande "riktiga" användare ----------
+existing_users=()
+while IFS=: read -r user _ uid _; do
+    if (( uid >= 1000 && uid < 65534 )); then
+        existing_users+=("$user")
+    fi
+done < /etc/passwd
+
+# ---------- 3. Skapa alla användare först ----------
+for user in "$@"; do
+    # Absoluta sökvägar för att undvika PATH-problem med sudo
+    if /usr/sbin/useradd -m -s /bin/bash "$user" 2>/dev/null; then
+        echo "Användaren '$user' skapades."
     else
-        # Skapa användaren med hemkatalog och bash som standardskal
-        useradd -m -s /bin/bash "$ANVANDARE"
-        if [ $? -ne 0 ]; then
-            echo "Fel: Kunde inte skapa användaren '$ANVANDARE'."
+        # Om användaren redan finns fortsätter vi (annars avbryt)
+        if ! id "$user" &>/dev/null; then
+            echo "Fel: Kunde inte skapa '$user'." >&2
             exit 1
         fi
-        echo "Användaren '$ANVANDARE' skapades."
+        echo "Varning: '$user' finns redan."
     fi
 done
 
-# -----------------------------------------------------------------------------
-# 4. SÄTT UPP KATALOGER, RÄTTIGHETER OCH VÄLKOMSTFIL FÖR VARJE ANVÄNDARE
-# -----------------------------------------------------------------------------
-for ANVANDARE in "$@"; do
+# ---------- 4. Konfigurera hemkatalog för varje användare ----------
+for user in "$@"; do
+    home="/home/$user"
 
-    echo "--------------------------------------------"
-    echo "Konfigurerar: $ANVANDARE"
+    # Skapa mappar med absoluta sökvägar och sätt rätt ägare/rättigheter
+    /usr/bin/install -d -m 700 -o "$user" -g "$user" "$home/Documents"
+    /usr/bin/install -d -m 700 -o "$user" -g "$user" "$home/Downloads"
+    /usr/bin/install -d -m 700 -o "$user" -g "$user" "$home/Work"
 
-    HEMKATALOG="/home/$ANVANDARE"
+    # Välkomstfil
+    welcome="$home/welcome.txt"
+    echo "Välkommen $user" > "$welcome"
 
-    # Skapa hemkatalogen om den saknas
-    if [ ! -d "$HEMKATALOG" ]; then
-        mkdir -p "$HEMKATALOG"
-    fi
-
-    # Skapa de tre obligatoriska undermapparna
-    mkdir -p "$HEMKATALOG/Documents"
-    mkdir -p "$HEMKATALOG/Downloads"
-    mkdir -p "$HEMKATALOG/Work"
-
-    echo "Kataloger skapade: Documents, Downloads, Work"
-
-    # Sätt rättigheter - endast ägaren kan läsa/skriva/köra (700)
-    chmod 700 "$HEMKATALOG/Documents"
-    chmod 700 "$HEMKATALOG/Downloads"
-    chmod 700 "$HEMKATALOG/Work"
-
-    echo "Rättigheter satta (700)."
-
-    # -------------------------------------------------------------------------
-    # Skapa welcome.txt
-    # Rad 1: "Välkommen <användarnamn>"
-    # Resterande rader: alla andra användare på systemet (UID >= 1000)
-    # -------------------------------------------------------------------------
-    VELKOMST_FIL="$HEMKATALOG/welcome.txt"
-
-    # Rad 1: personligt välkomstmeddelande
-    echo "Välkommen $ANVANDARE" > "$VELKOMST_FIL"
-
-    # Lista alla andra riktiga användare, exkludera nuvarande användare
-    while IFS=: read -r ANVNAMN _ ANVID _ _ _ _; do
-        if [ "$ANVID" -ge 1000 ] && [ "$ANVNAMN" != "$ANVANDARE" ] && [ "$ANVNAMN" != "nobody" ]; then
-            echo "$ANVNAMN" >> "$VELKOMST_FIL"
+    # Lista övriga användare (de som fanns innan + de nyskapade utom sig själv)
+    for other in "${existing_users[@]}"; do
+        [[ "$other" != "$user" ]] && echo "$other" >> "$welcome"
+    done
+    # Lägg även till de nyskapade användarna som inte fanns i existing_users
+    for other in "$@"; do
+        if [[ "$other" != "$user" ]] && ! printf '%s\n' "${existing_users[@]}" | grep -qx "$other"; then
+            echo "$other" >> "$welcome"
         fi
-    done < /etc/passwd
+    done
 
-    echo "Välkomstfil skapad."
+    # Ägarskap och rättigheter för välkomstfilen
+    /bin/chown "$user":"$user" "$welcome"
+    /bin/chmod 600 "$welcome"
 
-    # Sätt rätt ägare på hela hemkatalogen
-    chown -R "$ANVANDARE":"$ANVANDARE" "$HEMKATALOG"
-
-    echo "Klar: $ANVANDARE"
+    echo "Konfiguration klar för $user"
 done
 
-echo "--------------------------------------------"
-echo "Klart! Alla användare har skapats och konfigurerats."
 exit 0
-
 
