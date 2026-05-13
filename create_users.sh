@@ -1,13 +1,13 @@
 #!/bin/bash
 
 if [ "$EUID" -ne 0 ]; then
-    echo "Måste köras som root"
+    echo "Must be root"
     exit 1
 fi
 
 for user in "$@"
 do
-    useradd -m "$user"
+    useradd -m "$user" 2>/dev/null || true
 
     home="/home/$user"
 
@@ -15,7 +15,6 @@ do
 
     chown -R "$user:$user" "$home"
 
-    chmod 700 "$home"
     chmod 700 "$home/Documents"
     chmod 700 "$home/Downloads"
     chmod 700 "$home/Work"
