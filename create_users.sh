@@ -1,41 +1,27 @@
 #!/bin/bash
 
 if [ "$EUID" -ne 0 ]; then
-    echo "Du måste köra scriptet som root."
+    echo "Måste köras som root"
     exit 1
 fi
 
-if [ $# -eq 0 ]; then
-    echo "Användning: $0 användare1 användare2"
-    exit 1
-fi
-
-# Loop genom alla användare
-for USERNAME in "$@"
+for user in "$@"
 do
+    useradd -m "$user"
 
-    # Skapa användare med hemkatalog
-    useradd -m "$USERNAME"
+    home="/home/$user"
 
-    # Skapa mappar
-    mkdir -p /home/"$USERNAME"/Documents
-    mkdir -p /home/"$USERNAME"/Downloads
-    mkdir -p /home/"$USERNAME"/Work
+    mkdir -p "$home/Documents" "$home/Downloads" "$home/Work"
 
-    # Sätt ägare
-    chown -R "$USERNAME":"$USERNAME" /home/"$USERNAME"
+    chown -R "$user:$user" "$home"
 
-    # Sätt rättigheter
-    chmod 700 /home/"$USERNAME"/Documents
-    chmod 700 /home/"$USERNAME"/Downloads
-    chmod 700 /home/"$USERNAME"/Work
+    chmod 700 "$home"
+    chmod 700 "$home/Documents"
+    chmod 700 "$home/Downloads"
+    chmod 700 "$home/Work"
 
-    # Skapa welcome.txt
-    echo "Välkommen $USERNAME" > /home/"$USERNAME"/welcome.txt
+    echo "Välkommen $user" > "$home/welcome.txt"
+    cut -d: -f1 /etc/passwd | grep -v "^$user$" >> "$home/welcome.txt"
 
-    # Lista andra användare
-    cut -d: -f1 /etc/passwd | grep -v "^$USERNAME$" >> /home/"$USERNAME"/welcome.txt
-
-    chown "$USERNAME":"$USERNAME" /home/"$USERNAME"/welcome.txt
-
+    chown "$user:$user" "$home/welcome.txt"
 done
