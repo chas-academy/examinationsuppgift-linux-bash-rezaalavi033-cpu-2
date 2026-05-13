@@ -1,31 +1,41 @@
 #!/bin/bash
-# Skapar användare, hemkatalog med mappar och welcome.txt.
 
-set -e
-
-# Endast root får köra scriptet
-if [ "$(id -u)" -ne 0 ]; then
-    echo "Fel: kör med sudo (root krävs)." >&2
+if [ "$EUID" -ne 0 ]; then
+    echo "Du måste köra scriptet som root."
     exit 1
 fi
 
-# Skapa alla användare först så de syns i listan i welcome.txt
-for user in "$@"; do
-    useradd -m "$user"
-done
+if [ $# -eq 0 ]; then
+    echo "Användning: $0 användare1 användare2"
+    exit 1
+fi
 
-for user in "$@"; do
-    home="/home/$user"
+# Loop genom alla användare
+for USERNAME in "$@"
+do
 
-    # Standardmappar, bara ägaren får läsa/skriva (700)
-    mkdir -p "$home/Documents" "$home/Downloads" "$home/Work"
-    chown -R "$user:$user" "$home/Documents" "$home/Downloads" "$home/Work"
-    chmod 700 "$home/Documents" "$home/Downloads" "$home/Work"
+    # Skapa användare med hemkatalog
+    useradd -m "$USERNAME"
 
-    # Rad 1: välkommen. Resten: övriga användare på systemet
-    {
-        echo "Välkommen $user"
-        cut -d: -f1 /etc/passwd | grep -Fvx "$user"
-    } >"$home/welcome.txt"
-    chown "$user:$user" "$home/welcome.txt"
+    # Skapa mappar
+    mkdir -p /home/"$USERNAME"/Documents
+    mkdir -p /home/"$USERNAME"/Downloads
+    mkdir -p /home/"$USERNAME"/Work
+
+    # Sätt ägare
+    chown -R "$USERNAME":"$USERNAME" /home/"$USERNAME"
+
+    # Sätt rättigheter
+    chmod 700 /home/"$USERNAME"/Documents
+    chmod 700 /home/"$USERNAME"/Downloads
+    chmod 700 /home/"$USERNAME"/Work
+
+    # Skapa welcome.txt
+    echo "Välkommen $USERNAME" > /home/"$USERNAME"/welcome.txt
+
+    # Lista andra användare
+    cut -d: -f1 /etc/passwd | grep -v "^$USERNAME$" >> /home/"$USERNAME"/welcome.txt
+
+    chown "$USERNAME":"$USERNAME" /home/"$USERNAME"/welcome.txt
+
 done
