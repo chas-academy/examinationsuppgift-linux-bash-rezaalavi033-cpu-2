@@ -30,7 +30,7 @@ if [ "$#" -eq 0 ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 3. SKAPA ALLA ANVÄNDARE FÖRST innan vi skapar filer
+# 3. SKAPA ALLA ANVÄNDARE FÖRST
 #    (så att alla användare finns i /etc/passwd när welcome.txt skrivs)
 # -----------------------------------------------------------------------------
 for ANVANDARE in "$@"; do
@@ -79,17 +79,17 @@ for ANVANDARE in "$@"; do
     # -------------------------------------------------------------------------
     # Skapa welcome.txt
     # Rad 1: "Välkommen <användarnamn>"
-    # Resterande rader: alla andra användare med UID >= 1000
+    # Resterande rader: alla andra användare på systemet (UID >= 1000)
     # -------------------------------------------------------------------------
     VELKOMST_FIL="$HEMKATALOG/welcome.txt"
 
     # Rad 1: personligt välkomstmeddelande
     echo "Välkommen $ANVANDARE" > "$VELKOMST_FIL"
 
-    # Lista alla andra riktiga användare (UID >= 1000), exkludera nuvarande
-    while IFS=: read -r NAMN _ UID _ _ _ _; do
-        if [ "$UID" -ge 1000 ] && [ "$NAMN" != "$ANVANDARE" ] && [ "$NAMN" != "nobody" ]; then
-            echo "$NAMN" >> "$VELKOMST_FIL"
+    # Lista alla andra riktiga användare, exkludera nuvarande användare
+    while IFS=: read -r ANVNAMN _ ANVID _ _ _ _; do
+        if [ "$ANVID" -ge 1000 ] && [ "$ANVNAMN" != "$ANVANDARE" ] && [ "$ANVNAMN" != "nobody" ]; then
+            echo "$ANVNAMN" >> "$VELKOMST_FIL"
         fi
     done < /etc/passwd
 
@@ -104,4 +104,5 @@ done
 echo "--------------------------------------------"
 echo "Klart! Alla användare har skapats och konfigurerats."
 exit 0
+
 
