@@ -2,62 +2,63 @@
 
 # ==============================================================================
 # Script: create_users.sh
-# Beskrivning: Automatiserad användarhantering för Linux-prov.
+# Uppgift: Användarhantering i Linux
 # ==============================================================================
 
-# 1. Kontrollera att användaren är root
-if [[ $EUID -ne 0 ]]; then
-   echo "Detta script måste köras som root."
-   exit 1
-fi
-
-# Kontrollera att vi fick argument
-if [ $# -eq 0 ]; then
-    echo "Användning: $0 namn1 namn2 ..."
+# 1. Kontrollera att scriptet körs som root (UID 0)
+if [ "$EUID" -ne 0 ]; then
+    echo "Fel: Scriptet måste köras med sudo/root-rättigheter."
     exit 1
 fi
 
-# Loopa igenom alla namn som skickades med
+# Kontrollera att användarnamn skickats som argument
+if [ $# -eq 0 ]; then
+    echo "Användning: $0 användare1 [användare2 ...]"
+    exit 1
+fi
+
+# Loopa igenom alla argument ($@ innehåller alla namn)
 for username in "$@"; do
 
     # 2. Skapa användaren om den inte redan finns
-    if id "$username" &>/dev/null; then
-        echo "Användaren $username finns redan - uppdaterar bara filer/mappar."
+    # -m ser till att hemkatalogen skapas, -s sätter standard-shell
+    if ! id "$username" &>/dev/null; then
+        useradd -m -s /bin/bash "$username"
+        echo "Skapade användaren: $username"
     else
-        useradd -m "$username"
-        echo "Skapade användare: $username"
+        echo "Användaren $username finns redan. Uppdaterar mappar..."
     fi
 
-    # Definiera hemkatalogen
-    USER_HOME="/home/$username"
+    # Hämta sökvägen till användarens hemkatalog på ett säkert sätt
+    USER_HOME=$(getent passwd "$username" | cut -d: -f6)
 
-    # 3.1 Skapa undermappar
-    # Vi skapar dem även om användaren fanns sedan innan
-    mkdir -p "$USER_HOME/Documents" "$USER_HOME/Downloads" "$USER_HOME/Work"
+    # 3.1 Skapa undermappar (Documents, Downloads, Work)
+    # mkdir -p skapar mappen om den inte finns utan att ge felmeddelande
+    mkdir -p "$USER_HOME/Documents"
+    mkdir -p "$USER_HOME/Downloads"
+    mkdir -p "$USER_HOME/Work"
 
-    # 3.2 Rättigheter (Endast ägare får läsa/skriva/köra)
-    # chmod 700 sätter rwx------
+    # 4. Skapa välkomstfil (welcome.txt)
+    # Skriver över eventuell gammal fil och sätter rubriken
+    echo "Välkommen $username" > "$USER_HOME/welcome.txt"
+    
+    # Lista alla ANDRA användare (alla i /etc/passwd utom den aktuella användaren)
+    cut -d: -f1 /etc/passwd | grep -v "^$username$" >> "$USER_HOME/welcome.txt"
+
+    # 3.2 Rättigheter och ägarskap
+    # Ändra ägare till den nya användaren för hela hemkatalogen rekursivt
     chown -R "$username":"$username" "$USER_HOME"
+
+    # Sätt rättigheter: 700 betyder rwx------ (endast ägare har tillgång)
     chmod 700 "$USER_HOME"
     chmod 700 "$USER_HOME/Documents"
     chmod 700 "$USER_HOME/Downloads"
     chmod 700 "$USER_HOME/Work"
-
-    # 4. Välkomstfil
-    WELCOME_FILE="$USER_HOME/welcome.txt"
     
-    # Skriv första raden: Välkommen <användare>
-    echo "Välkommen $username" > "$WELCOME_FILE"
-    
-    # Lista alla ANDRA användare (vi filtrerar bort den aktuella användaren)
-    # Vi hämtar alla namn från /etc/passwd men tar bort raden som matchar $username
-    cut -d: -f1 /etc/passwd | grep -v "^$username$" >> "$WELCOME_FILE"
+    # welcome.txt ska också vara privat (läs/skriv för ägare: 600)
+    chmod 600 "$USER_HOME/welcome.txt"
 
-    # Sätt ägare på välkomstfilen också
-    chown "$username":"$username" "$WELCOME_FILE"
-    chmod 600 "$WELCOME_FILE"
-
-    echo "Klar med hantering av $username"
+    echo "Klar med konfigurering för $username."
 done
 
-echo "Scriptet har körts klart."
+echo "Alla användare har hanterats."
