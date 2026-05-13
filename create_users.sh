@@ -1,110 +1,61 @@
 #!/bin/bash
 
-# =============================================================================
-# create_users.sh
-# Beskrivning: Automatiserat script för att skapa användare och sätta upp
-#              deras katalogstruktur på systemet.
-#
-# Användning: sudo ./create_users.sh <användare1> <användare2> ...
-# Exempel:    sudo ./create_users.sh Anna Bjorn Charlie
-# =============================================================================
+# Script: create_users.sh
+# Description: Skapar användare, deras katalogstruktur och en välkomstfil.
+#              Måste köras som root.
 
-# -----------------------------------------------------------------------------
-# 1. BEHÖRIGHETSKONTROLL - Kontrollera att scriptet körs som root (UID 0)
-# -----------------------------------------------------------------------------
-if [ "$EUID" -ne 0 ]; then
-    echo "Fel: Detta script måste köras som root (superuser)."
-    echo "Försök igen med: sudo $0 $*"
+# ---------- 1. Kontrollera att scriptet körs som root ----------
+if [[ $EUID -ne 0 ]]; then
+    echo "Detta script måste köras som root." >&2
     exit 1
 fi
 
-# -----------------------------------------------------------------------------
-# 2. KONTROLLERA ATT MINST ETT ANVÄNDARNAMN HAR ANGETTS
-# -----------------------------------------------------------------------------
-if [ "$#" -eq 0 ]; then
-    echo "Fel: Inga användarnamn angavs."
-    echo "Användning: $0 <användare1> <användare2> ..."
+# Kontrollera att minst ett användarnamn har skickats in
+if [[ $# -eq 0 ]]; then
+    echo "Användning: $0 användare1 [användare2 ...]" >&2
     exit 1
 fi
 
-# -----------------------------------------------------------------------------
-# 3. LOOPAR IGENOM ALLA ANGIVNA ANVÄNDARNAMN OCH SKAPAR VARJE ANVÄNDARE
-# -----------------------------------------------------------------------------
-for ANVANDARE in "$@"; do
+# ---------- Hämta lista över redan existerande "vanliga" användare ----------
+# Vi filtrerar på UID >= 1000 och UID < 65534 (undantag för "nobody").
+existing_users=()
+while IFS=: read -r username _ uid _; do
+    if (( uid >= 1000 && uid < 65534 )); then
+        existing_users+=("$username")
+    fi
+done < /etc/passwd
 
-    echo "--------------------------------------------"
-    echo "Bearbetar användare: $ANVANDARE"
-
-    # Kontrollera om användaren redan finns i systemet
-    if id "$ANVANDARE" &>/dev/null; then
-        echo "Varning: Användaren '$ANVANDARE' finns redan. Hoppar över."
-    else
-        # Skapa användaren med hemkatalog och bash som standardskal
-        useradd -m -s /bin/bash "$ANVANDARE"
-
-        if [ $? -ne 0 ]; then
-            echo "Fel: Kunde inte skapa användaren '$ANVANDARE'. Hoppar över."
-            continue
-        fi
-
-        echo "Användaren '$ANVANDARE' skapades."
+# ---------- Loopa igenom alla angivna användarnamn ----------
+for user in "$@"; do
+    # Skapa användaren med hemkatalog (-m)
+    useradd -m "$user" 2>/dev/null
+    if [[ $? -ne 0 ]]; then
+        echo "Kunde inte skapa användaren: $user" >&2
+        continue
     fi
 
-    # -------------------------------------------------------------------------
-    # 4. KATALOGSTRUKTUR - Skapa undermapparna Documents, Downloads och Work
-    # -------------------------------------------------------------------------
-    HEMKATALOG="/home/$ANVANDARE"
+    homedir="/home/$user"
 
-    # Skapa hemkatalogen om den saknas
-    if [ ! -d "$HEMKATALOG" ]; then
-        mkdir -p "$HEMKATALOG"
-    fi
+    # ---------- 3. Skapa undermapparna Documents, Downloads, Work ----------
+    # Använd install för att sätta rätt ägare (user:user) och rättigheter (700)
+    install -d -m 700 -o "$user" -g "$user" "$homedir/Documents"
+    install -d -m 700 -o "$user" -g "$user" "$homedir/Downloads"
+    install -d -m 700 -o "$user" -g "$user" "$homedir/Work"
 
-    # Skapa de tre obligatoriska undermapparna
-    mkdir -p "$HEMKATALOG/Documents"
-    mkdir -p "$HEMKATALOG/Downloads"
-    mkdir -p "$HEMKATALOG/Work"
+    # ---------- 4. Skapa welcome.txt ----------
+    welcomefile="$homedir/welcome.txt"
+    echo "Välkommen $user" > "$welcomefile"
 
-    echo "Kataloger skapade: Documents, Downloads, Work"
-
-    # -------------------------------------------------------------------------
-    # 5. RÄTTIGHETER - Endast ägaren kan läsa/skriva/köra (chmod 700)
-    # -------------------------------------------------------------------------
-    chmod 700 "$HEMKATALOG/Documents"
-    chmod 700 "$HEMKATALOG/Downloads"
-    chmod 700 "$HEMKATALOG/Work"
-
-    echo "Rättigheter satta (700) på Documents, Downloads och Work."
-
-    # -------------------------------------------------------------------------
-    # 6. VÄLKOMSTMEDDELANDE - Skapa welcome.txt i hemkatalogen
-    #    Rad 1: "Välkommen <användarnamn>"
-    #    Följande rader: Alla andra användare på systemet (UID >= 1000)
-    # -------------------------------------------------------------------------
-    VELKOMST_FIL="$HEMKATALOG/welcome.txt"
-
-    # Rad 1: Personligt välkomstmeddelande
-    echo "Välkommen $ANVANDARE" > "$VELKOMST_FIL"
-
-    # Lista alla andra riktiga användare (UID >= 1000), exkludera den nyskapade
-    while IFS=: read -r NAMN _ UID _ _ _ _; do
-        if [ "$UID" -ge 1000 ] && [ "$NAMN" != "$ANVANDARE" ] && [ "$NAMN" != "nobody" ]; then
-            echo "$NAMN" >> "$VELKOMST_FIL"
+    # Skriv ut alla andra befintliga användare (exkludera den nya själv)
+    for existing in "${existing_users[@]}"; do
+        if [[ "$existing" != "$user" ]]; then
+            echo "$existing" >> "$welcomefile"
         fi
-    done < /etc/passwd
+    done
 
-    echo "Välkomstfil skapad: $VELKOMST_FIL"
-
-    # -------------------------------------------------------------------------
-    # 7. ÄGARSKAP - Sätt rätt ägare på hela hemkatalogen
-    # -------------------------------------------------------------------------
-    chown -R "$ANVANDARE":"$ANVANDARE" "$HEMKATALOG"
-
-    echo "Ägarskap satt för '$ANVANDARE'."
-    echo "Användaren '$ANVANDARE' är nu klar!"
-
+    # Ägare och rättigheter för välkomstfilen
+    chown "$user":"$user" "$welcomefile"
+    chmod 600 "$welcomefile"
 done
 
-echo "--------------------------------------------"
-echo "Klart! Alla angivna användare har bearbetats."
 exit 0
