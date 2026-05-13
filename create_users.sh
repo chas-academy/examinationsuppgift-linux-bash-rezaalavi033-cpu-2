@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # Script: create_users.sh
-# Description: Skapar användare, deras katalogstruktur och en välkomstfil.
+# Beskrivning: Skapar användare, deras katalogstruktur och en välkomstfil.
 #              Måste köras som root.
+#              Anrop: sudo ./create_users.sh användare1 [användare2 ...]
 
 # ---------- 1. Kontrollera att scriptet körs som root ----------
 if [[ $EUID -ne 0 ]]; then
@@ -27,8 +28,9 @@ done < /etc/passwd
 
 # ---------- Loopa igenom alla angivna användarnamn ----------
 for user in "$@"; do
-    # Skapa användaren med hemkatalog (-m)
-    useradd -m "$user" 2>/dev/null
+    # Skapa användaren med hemkatalog (-m). Använd full sökväg för att vara
+    # oberoende av sudo:s PATH.
+    /usr/sbin/useradd -m "$user" 2>/dev/null
     if [[ $? -ne 0 ]]; then
         echo "Kunde inte skapa användaren: $user" >&2
         continue
@@ -37,10 +39,10 @@ for user in "$@"; do
     homedir="/home/$user"
 
     # ---------- 3. Skapa undermapparna Documents, Downloads, Work ----------
-    # Använd install för att sätta rätt ägare (user:user) och rättigheter (700)
-    install -d -m 700 -o "$user" -g "$user" "$homedir/Documents"
-    install -d -m 700 -o "$user" -g "$user" "$homedir/Downloads"
-    install -d -m 700 -o "$user" -g "$user" "$homedir/Work"
+    # Använd install med absolut sökväg och rätt ägare/rättigheter (700).
+    /usr/bin/install -d -m 700 -o "$user" -g "$user" "$homedir/Documents"
+    /usr/bin/install -d -m 700 -o "$user" -g "$user" "$homedir/Downloads"
+    /usr/bin/install -d -m 700 -o "$user" -g "$user" "$homedir/Work"
 
     # ---------- 4. Skapa welcome.txt ----------
     welcomefile="$homedir/welcome.txt"
@@ -54,8 +56,8 @@ for user in "$@"; do
     done
 
     # Ägare och rättigheter för välkomstfilen
-    chown "$user":"$user" "$welcomefile"
-    chmod 600 "$welcomefile"
+    /usr/bin/chown "$user":"$user" "$welcomefile"
+    /bin/chmod 600 "$welcomefile"
 done
 
 exit 0
