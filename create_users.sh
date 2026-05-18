@@ -15,8 +15,7 @@ if [ $# -eq 0 ]; then
     echo "Fel: Ange minst ett användarnamn."
     echo "Användning: $0 användarnamn1 [användarnamn2 ...]"
     exit 1
-fi
-
+fifit
 for username in "$@"; do
     
     if id "$username" &>/dev/null; then
