@@ -7,13 +7,13 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Kontrollera att minst en användare skickats in
+# Kontrollera att minst en användare skickats in.
 if [ $# -eq 0 ]; then
     echo "Användning: ./create_users.sh användare1 användare2 ..."
     exit 1
 fi
 
-# Loopa igenom alla användarnamn som skickas in
+# Loopa igenom alla användarnamn som skickas in.
 for USERNAME in "$@"
 do
 
