@@ -1,59 +1,62 @@
 #!/bin/bash
 
-# Kollar så scriptet körs som root
-if [ "$EUID" -ne 0 ]; then
-    echo "Du måste köra som root"
+# =============================================
+# create_users.sh
+# Linux & Bash - Användarhantering
+# =============================================
+
+# Kontrollera root
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Fel: Detta script måste köras som root (använd sudo)."
     exit 1
 fi
 
-# Loopar igenom alla användare som skickas in
-for USER in "$@"
-do
-    # Hemkatalog för användaren
-    HOME_DIR="/home/$USER"
+if [ $# -eq 0 ]; then
+    echo "Fel: Ange minst ett användarnamn."
+    echo "Användning: $0 användarnamn1 [användarnamn2 ...]"
+    exit 1
+fi
 
-    # Skapar användaren om den inte finns
-    if ! id "$USER" &>/dev/null; then
-        useradd -m -d "$HOME_DIR" "$USER" 2>/dev/null
+for username in "$@"; do
+    
+    if id "$username" &>/dev/null; then
+        echo "Varning: Användaren $username finns redan. Hoppar över."
+        continue
     fi
-
-    # Skapar hemkatalog om den saknas
-    mkdir -p "$HOME_DIR"
-
-    # Skapar mappar i hemkatalogen
-    mkdir -p "$HOME_DIR/Documents"
-    mkdir -p "$HOME_DIR/Downloads"
-    mkdir -p "$HOME_DIR/Work"
-
-    # Sätter ägare på hela hemkatalogen
-    chown -R "$USER:$USER" "$HOME_DIR" 2>/dev/null
-
-    # Sätter rättigheter så bara ägaren har tillgång
-    chmod 700 "$HOME_DIR/Documents"
-    chmod 700 "$HOME_DIR/Downloads"
-    chmod 700 "$HOME_DIR/Work"
-
-    # --- WELCOME FILE ---
-FILE="$HOME_DIR/welcome.txt"
-
-# Första raden (EXAKT format som testet vill ha)
-echo "Välkommen $USER" > "$FILE"
-
-# Tom rad
-echo "" >> "$FILE"
-
-# Lista andra användare i systemet
-echo "Användare:" >> "$FILE"
-
-# Hämtar användare från systemet
-cut -d: -f1 /etc/passwd | grep -v "^$USER$" >> "$FILE"
-
-# Sätter rätt ägare
-chown "$USER:$USER" "$FILE" 2>/dev/null
-
-# Filen ska bara vara läsbar för ägaren
-chmod 600 "$FILE" 2>/dev/null
-
+    
+    echo "Skapar användare: $username"
+    
+    useradd -m "$username" 2>/dev/null || {
+        echo "Fel: Kunde inte skapa användaren $username"
+        continue
+    }
+    
+    home_dir="/home/$username"
+    
+    # Skapa mappar
+    mkdir -p "$home_dir/Documents" "$home_dir/Downloads" "$home_dir/Work"
+    
+    # Sätt ägare och rättigheter
+    chown -R "$username:$username" "$home_dir"
+    chmod -R 700 "$home_dir/Documents" "$home_dir/Downloads" "$home_dir/Work"
+    
+    # === VÄLKOMSTFIL - Förbättrad ===
+    welcome_file="$home_dir/welcome.txt"
+    
+    {
+        echo "Välkommen $username"
+        echo ""
+        echo "Andra användare på systemet:"
+        
+        # Lista alla användare med UID >= 1000 utom systemanvändare och den nya
+        awk -F: '$3 >= 1000 && $1 != "'"$username"'" {print $1}' /etc/passwd | sort
+    } > "$welcome_file"
+    
+    chown "$username:$username" "$welcome_file"
+    chmod 600 "$welcome_file"
+    
+    echo "✓ Användare $username skapad och konfigurerad."
 done
 
-exit 0
+echo "======================================"
+echo "Alla användare har bearbetats!"
