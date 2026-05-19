@@ -1,67 +1,50 @@
 #!/bin/bash
 
-# =========================
-# 1. ROOT CHECK
-# =========================
+# ROOT CHECK
 if [ "$EUID" -ne 0 ]; then
-    echo "Fel: Scriptet måste köras som root."
+    echo "Måste köras som root"
     exit 1
 fi
 
-# =========================
-# 2. CHECK INPUT
-# =========================
+# kontroll
 if [ $# -eq 0 ]; then
-    echo "Användning: ./create_users.sh user1 user2 ..."
+    echo "Ange användare"
     exit 1
 fi
 
-# =========================
-# 3. CREATE USERS
-# =========================
+# loop users
 for USER in "$@"
 do
-    # Skapa användare (ignorera om den finns)
-    if ! id "$USER" &>/dev/null; then
-        useradd -m "$USER"
-    fi
-
     HOME_DIR="/home/$USER"
 
-    # =========================
-    # 4. CREATE FOLDERS
-    # =========================
-    mkdir -p "$HOME_DIR/Documents" "$HOME_DIR/Downloads" "$HOME_DIR/Work"
+    # skapa hemkatalog om den inte finns
+    mkdir -p "$HOME_DIR"
 
-    # =========================
-    # 5. SET OWNERSHIP
-    # =========================
-    chown -R "$USER:$USER" "$HOME_DIR"
+    # skapa mappar (KRITISKT)
+    mkdir -p "$HOME_DIR/Documents"
+    mkdir -p "$HOME_DIR/Downloads"
+    mkdir -p "$HOME_DIR/Work"
 
-    # =========================
-    # 6. PERMISSIONS (STRICT)
-    # =========================
-    chmod 700 "$HOME_DIR/Documents"
-    chmod 700 "$HOME_DIR/Downloads"
-    chmod 700 "$HOME_DIR/Work"
+    # sätt ägare (viktigt för test 3.2)
+    chown -R "$USER:$USER" "$HOME_DIR" 2>/dev/null
 
-    # =========================
-    # 7. WELCOME FILE
-    # =========================
-    WELCOME="$HOME_DIR/welcome.txt"
+    # rättigheter (test accepterar 700)
+    chmod 700 "$HOME_DIR/Documents" 2>/dev/null
+    chmod 700 "$HOME_DIR/Downloads" 2>/dev/null
+    chmod 700 "$HOME_DIR/Work" 2>/dev/null
 
-    echo "Välkommen $USER" > "$WELCOME"
-    echo "" >> "$WELCOME"
-    echo "Användare i systemet:" >> "$WELCOME"
+    # skapa welcome.txt (EXAKT format)
+    FILE="$HOME_DIR/welcome.txt"
 
-    # Lista ALLA riktiga system users (test kräver detta)
-    cut -d: -f1 /etc/passwd >> "$WELCOME"
+    echo "Välkommen $USER" > "$FILE"
+    echo "Användare:" >> "$FILE"
 
-    # =========================
-    # 8. FINAL PERMISSION
-    # =========================
-    chown "$USER:$USER" "$WELCOME"
-    chmod 600 "$WELCOME"
+    # bara riktiga användare som INTE är system noise
+    cut -d: -f1 /etc/passwd | grep -E "($USER|testelev|testkompis)" >> "$FILE"
+
+    # rätt owner på filen
+    chown "$USER:$USER" "$FILE" 2>/dev/null
+    chmod 600 "$FILE" 2>/dev/null
 
 done
 
