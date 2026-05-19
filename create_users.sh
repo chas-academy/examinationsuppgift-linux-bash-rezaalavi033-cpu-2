@@ -1,57 +1,67 @@
 #!/bin/bash
 
-# Kontrollera att scriptet körs som root
-# Endast root (UID 0) får skapa användare
+# =========================
+# 1. ROOT CHECK
+# =========================
 if [ "$EUID" -ne 0 ]; then
     echo "Fel: Scriptet måste köras som root."
     exit 1
 fi
 
-# Kontrollera att minst en användare skickats in.
+# =========================
+# 2. CHECK INPUT
+# =========================
 if [ $# -eq 0 ]; then
-    echo "Användning: ./create_users.sh användare1 användare2 ..."
+    echo "Användning: ./create_users.sh user1 user2 ..."
     exit 1
 fi
 
-# Loopa igenom alla användarnamn som skickas in.
-for USERNAME in "$@"
+# =========================
+# 3. CREATE USERS
+# =========================
+for USER in "$@"
 do
-
-    # Skapa användaren om den inte redan finns
-    if ! id "$USERNAME" &>/dev/null; then
-        useradd -m "$USERNAME"
+    # Skapa användare (ignorera om den finns)
+    if ! id "$USER" &>/dev/null; then
+        useradd -m "$USER"
     fi
 
-    HOME_DIR="/home/$USERNAME"
+    HOME_DIR="/home/$USER"
 
-    # Skapa kataloger
-    mkdir -p "$HOME_DIR/Documents"
-    mkdir -p "$HOME_DIR/Downloads"
-    mkdir -p "$HOME_DIR/Work"
+    # =========================
+    # 4. CREATE FOLDERS
+    # =========================
+    mkdir -p "$HOME_DIR/Documents" "$HOME_DIR/Downloads" "$HOME_DIR/Work"
 
-    # Sätt ägare
-    chown -R "$USERNAME:$USERNAME" "$HOME_DIR/Documents"
-    chown -R "$USERNAME:$USERNAME" "$HOME_DIR/Downloads"
-    chown -R "$USERNAME:$USERNAME" "$HOME_DIR/Work"
+    # =========================
+    # 5. SET OWNERSHIP
+    # =========================
+    chown -R "$USER:$USER" "$HOME_DIR"
 
-    # Endast ägare får läsa/skriva
+    # =========================
+    # 6. PERMISSIONS (STRICT)
+    # =========================
     chmod 700 "$HOME_DIR/Documents"
     chmod 700 "$HOME_DIR/Downloads"
     chmod 700 "$HOME_DIR/Work"
 
-    # Skapa välkomstfil
-    WELCOME_FILE="$HOME_DIR/welcome.txt"
+    # =========================
+    # 7. WELCOME FILE
+    # =========================
+    WELCOME="$HOME_DIR/welcome.txt"
 
-    echo "Välkommen $USERNAME" > "$WELCOME_FILE"
-    echo "" >> "$WELCOME_FILE"
-    echo "Användare i systemet:" >> "$WELCOME_FILE"
+    echo "Välkommen $USER" > "$WELCOME"
+    echo "" >> "$WELCOME"
+    echo "Användare i systemet:" >> "$WELCOME"
 
-    # Lista alla användare
-    cut -d: -f1 /etc/passwd >> "$WELCOME_FILE"
+    # Lista ALLA riktiga system users (test kräver detta)
+    cut -d: -f1 /etc/passwd >> "$WELCOME"
 
-    # Sätt ägare och rättigheter
-    chown "$USERNAME:$USERNAME" "$WELCOME_FILE"
-    chmod 700 "$WELCOME_FILE"
+    # =========================
+    # 8. FINAL PERMISSION
+    # =========================
+    chown "$USER:$USER" "$WELCOME"
+    chmod 600 "$WELCOME"
 
 done
 
