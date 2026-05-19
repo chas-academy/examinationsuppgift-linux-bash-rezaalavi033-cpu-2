@@ -6,43 +6,47 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# kontroll
+# INGEN INPUT
 if [ $# -eq 0 ]; then
     echo "Ange användare"
     exit 1
 fi
 
-# loop users
+# LOOP ALL ARGUMENTS
 for USER in "$@"
 do
     HOME_DIR="/home/$USER"
 
-    # skapa hemkatalog om den inte finns
+    # SKAPA USER (KRITISKT)
+    if ! id "$USER" &>/dev/null; then
+        useradd -m -d "$HOME_DIR" "$USER" 2>/dev/null
+    fi
+
+    # säkerställ home
     mkdir -p "$HOME_DIR"
 
-    # skapa mappar (KRITISKT)
+    # mappar (TEST KRAV)
     mkdir -p "$HOME_DIR/Documents"
     mkdir -p "$HOME_DIR/Downloads"
     mkdir -p "$HOME_DIR/Work"
 
-    # sätt ägare (viktigt för test 3.2)
+    # ägare
     chown -R "$USER:$USER" "$HOME_DIR" 2>/dev/null
 
-    # rättigheter (test accepterar 700)
+    # rättigheter
     chmod 700 "$HOME_DIR/Documents" 2>/dev/null
     chmod 700 "$HOME_DIR/Downloads" 2>/dev/null
     chmod 700 "$HOME_DIR/Work" 2>/dev/null
 
-    # skapa welcome.txt (EXAKT format)
+    # welcome.txt
     FILE="$HOME_DIR/welcome.txt"
 
     echo "Välkommen $USER" > "$FILE"
-    echo "Användare:" >> "$FILE"
+    echo "" >> "$FILE"
+    echo "Användare i systemet:" >> "$FILE"
 
-    # bara riktiga användare som INTE är system noise
-    cut -d: -f1 /etc/passwd | grep -E "($USER|testelev|testkompis)" >> "$FILE"
+    cut -d: -f1 /etc/passwd >> "$FILE"
 
-    # rätt owner på filen
     chown "$USER:$USER" "$FILE" 2>/dev/null
     chmod 600 "$FILE" 2>/dev/null
 
