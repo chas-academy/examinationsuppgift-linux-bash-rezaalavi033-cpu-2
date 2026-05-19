@@ -33,26 +33,26 @@ do
     chmod 700 "$HOME_DIR/Downloads"
     chmod 700 "$HOME_DIR/Work"
 
-    # Skapar welcome.txt
-    FILE="$HOME_DIR/welcome.txt"
+    # --- WELCOME FILE ---
+FILE="$HOME_DIR/welcome.txt"
 
-    # Första raden i filen
-    echo "Välkommen $USER" > "$FILE"
+# Första raden (EXAKT format som testet vill ha)
+echo "Välkommen $USER" > "$FILE"
 
-    # Tom rad för bättre läsning
-    echo "" >> "$FILE"
+# Tom rad
+echo "" >> "$FILE"
 
-    # Rubrik för användarlista
-    echo "Andra användare i systemet:" >> "$FILE"
+# Lista andra användare i systemet
+echo "Användare:" >> "$FILE"
 
-    # Hämtar alla användare och tar bort den aktuella
-    getent passwd | cut -d: -f1 | grep -v "^$USER$" >> "$FILE"
+# Hämtar användare från systemet
+cut -d: -f1 /etc/passwd | grep -v "^$USER$" >> "$FILE"
 
-    # Sätter ägare på welcome.txt
-    chown "$USER:$USER" "$FILE" 2>/dev/null
+# Sätter rätt ägare
+chown "$USER:$USER" "$FILE" 2>/dev/null
 
-    # Gör filen endast läsbar för ägaren
-    chmod 600 "$FILE" 2>/dev/null
+# Filen ska bara vara läsbar för ägaren
+chmod 600 "$FILE" 2>/dev/null
 
 done
 
