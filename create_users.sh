@@ -1,53 +1,57 @@
 #!/bin/bash
 
-# ROOT CHECK
+# Kollar så scriptet körs som root
 if [ "$EUID" -ne 0 ]; then
-    echo "Måste köras som root"
+    echo "Du måste köra som root"
     exit 1
 fi
 
-# INGEN INPUT
-if [ $# -eq 0 ]; then
-    echo "Ange användare"
-    exit 1
-fi
-
-# LOOP ALL ARGUMENTS
+# Loopar igenom alla användare som skickas in
 for USER in "$@"
 do
+    # Hemkatalog för användaren
     HOME_DIR="/home/$USER"
 
-    # SKAPA USER (KRITISKT)
+    # Skapar användaren om den inte finns
     if ! id "$USER" &>/dev/null; then
         useradd -m -d "$HOME_DIR" "$USER" 2>/dev/null
     fi
 
-    # säkerställ home
+    # Skapar hemkatalog om den saknas
     mkdir -p "$HOME_DIR"
 
-    # mappar (TEST KRAV)
+    # Skapar mappar i hemkatalogen
     mkdir -p "$HOME_DIR/Documents"
     mkdir -p "$HOME_DIR/Downloads"
     mkdir -p "$HOME_DIR/Work"
 
-    # ägare
+    # Sätter ägare på hela hemkatalogen
     chown -R "$USER:$USER" "$HOME_DIR" 2>/dev/null
 
-    # rättigheter
-    chmod 700 "$HOME_DIR/Documents" 2>/dev/null
-    chmod 700 "$HOME_DIR/Downloads" 2>/dev/null
-    chmod 700 "$HOME_DIR/Work" 2>/dev/null
+    # Sätter rättigheter så bara ägaren har tillgång
+    chmod 700 "$HOME_DIR/Documents"
+    chmod 700 "$HOME_DIR/Downloads"
+    chmod 700 "$HOME_DIR/Work"
 
-    # welcome.txt
+    # Skapar welcome.txt
     FILE="$HOME_DIR/welcome.txt"
 
+    # Första raden i filen
     echo "Välkommen $USER" > "$FILE"
+
+    # Tom rad för bättre läsning
     echo "" >> "$FILE"
-    echo "Användare i systemet:" >> "$FILE"
 
-    cut -d: -f1 /etc/passwd >> "$FILE"
+    # Rubrik för användarlista
+    echo "Andra användare i systemet:" >> "$FILE"
 
+    # Hämtar alla användare och tar bort den aktuella
+    getent passwd | cut -d: -f1 | grep -v "^$USER$" >> "$FILE"
+
+    # Sätter ägare på welcome.txt
     chown "$USER:$USER" "$FILE" 2>/dev/null
+
+    # Gör filen endast läsbar för ägaren
     chmod 600 "$FILE" 2>/dev/null
 
 done
